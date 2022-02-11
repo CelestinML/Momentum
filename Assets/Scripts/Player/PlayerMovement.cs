@@ -12,7 +12,6 @@ public class PlayerMovement : MonoBehaviour
     //Stored rigidbody
     private Rigidbody2D _rb;
     
-    
     [Header("Jump parameters")] 
     
     //Serialized
@@ -82,7 +81,7 @@ public class PlayerMovement : MonoBehaviour
     
     //Serialized
     
-    [Range(8, 360)] [SerializeField] private int raycastCount = 360;
+    [Range(8, 1440)] [SerializeField] private int raycastCount = 360;
 
     [SerializeField] private Transform groundCheck;
     
@@ -91,13 +90,17 @@ public class PlayerMovement : MonoBehaviour
     
     //Checks if the player is on the ground or not
     private bool _isGrounded = true;
-    
 
-    [Header("GFX")] 
-    
+
+    [Header("GFX")]
+
     //Serialized
+
+    public float maxBodyRotationSpeed = 5;
     
     [SerializeField] private Transform body;
+
+    [SerializeField] private Transform shell;
 
     [SerializeField] private float flipThreshold = 1;
     
@@ -127,6 +130,7 @@ public class PlayerMovement : MonoBehaviour
     private void Start()
     {
         _rb = GetComponent<Rigidbody2D>();
+
         _renderer = GetComponent<SpriteRenderer>();
 
         _checkDistance = Vector2.Distance(transform.position, groundCheck.position);
@@ -134,7 +138,7 @@ public class PlayerMovement : MonoBehaviour
         _psEmission = ps.emission;
         _particlesRateOverTime = (int) _psEmission.rateOverTime.constant;
 
-        _jumpCheckDistance = body.GetComponent<Renderer>().bounds.size.x / 2 * bodyMaxInflate + bodyMaxShift;
+        _jumpCheckDistance = shell.GetComponent<Renderer>().bounds.size.x / 2 * bodyMaxInflate + bodyMaxShift;
 
         _jumpSequence = SetupJumpSequence();
     }
@@ -144,6 +148,8 @@ public class PlayerMovement : MonoBehaviour
         GetInputs();
 
         OrientatePlayer();
+
+        RotateBody();
 
         HandleParticles();
     }
@@ -205,6 +211,13 @@ public class PlayerMovement : MonoBehaviour
         }
 
         transform.rotation = Quaternion.Euler(0, yRotation, zRotation);
+    }
+
+    private void RotateBody()
+    {
+        float projectedSpeed = Vector2.Dot(_rb.velocity, _moveDirection);
+        
+        body.rotation *= Quaternion.AngleAxis(-Mathf.Sign(projectedSpeed) * _horizontalInput * maxBodyRotationSpeed * Time.deltaTime, Vector3.forward);
     }
 
     private void HandleParticles()
@@ -331,9 +344,9 @@ public class PlayerMovement : MonoBehaviour
         
         //Setup scale
         mySequence.Insert(jumpSequenceDuration / 3,
-            body.DOScale(new Vector3(bodyMaxInflate, bodyMaxInflate, 1), jumpSequenceDuration / 3).SetEase(Ease.Linear));
+            shell.DOScale(new Vector3(bodyMaxInflate, bodyMaxInflate, 1), jumpSequenceDuration / 3).SetEase(Ease.Linear));
         mySequence.Insert(jumpSequenceDuration * 2 / 3,
-            body.DOScale(new Vector3(1, 1, 1), jumpSequenceDuration / 3).SetEase(Ease.Linear));
+            shell.DOScale(new Vector3(1, 1, 1), jumpSequenceDuration / 3).SetEase(Ease.Linear));
 
         mySequence.OnComplete(() => _allowJump = false);
 

@@ -25,6 +25,10 @@ public class PlayerMovement : MonoBehaviour
     public float wheelMaxShift = .3f;
     
     public float jumpSequenceDuration = .3f;
+
+    private bool _lockCurrentJumpForce = false;
+    
+    private Vector2 currentJumpForce = Vector2.zero;
     
     //Private
     
@@ -32,15 +36,11 @@ public class PlayerMovement : MonoBehaviour
     private bool _currentJumpInput = false;
     private bool _previousJumpInput = false;
     private bool _jumpInput = false;
+
+    private bool _allowJump = true;
     
     //To make sure we check the positive jump input in the next fixed update
     private bool _jumpInputHasBeenChecked = true;
-    
-    //To avoid jumping many times at at once
-    private bool _allowJump = false;
-    
-    //Jump attributes
-    private Sequence _jumpSequence = null;
     
     //Calculated according to the wheel's size
     private float _jumpCheckDistance;
@@ -97,8 +97,6 @@ public class PlayerMovement : MonoBehaviour
     //Serialized
 
     public float maxWheelRotationSpeed = 540;
-    
-    [SerializeField] private Transform wheel;
 
     [SerializeField] private Transform wheelGfx;
 
@@ -141,8 +139,6 @@ public class PlayerMovement : MonoBehaviour
         _particlesRateOverTime = (int) _psEmission.rateOverTime.constant;
 
         _jumpCheckDistance = shellGfx.GetComponent<Renderer>().bounds.size.x / 2 * wheelMaxInflate + wheelMaxShift;
-
-        _jumpSequence = SetupJumpSequence();
     }
 
     private void Update()
@@ -159,12 +155,12 @@ public class PlayerMovement : MonoBehaviour
     private void FixedUpdate()
     {
         CheckGrounded();
-
-        AdaptGravity();
-
-        MovePlayer();
-
-        _jumpInputHasBeenChecked = true;
+        
+        HandleGravity();
+        
+        CalculateJump();
+        
+        HandleMovement();
     }
 
     private void GetInputs()
@@ -254,9 +250,8 @@ public class PlayerMovement : MonoBehaviour
     
     //PHYSICS FUNCTIONS
 
-    private void MovePlayer()
+    private void HandleMovement()
     {
-        //Everything is doable only if we are grounded
         if (_isGrounded)
         {
             float newMoveSpeed = CalculateNewMoveSpeed();
@@ -270,10 +265,26 @@ public class PlayerMovement : MonoBehaviour
             _rb.velocity = new Vector2(_rb.velocity.x, Mathf.Max(-maxFallingSpeed, _rb.velocity.y));
         }
 
-        if (_jumpInput)
+        if (_lockCurrentJumpForce)
         {
-            Jump();
+            _rb.AddForce(currentJumpForce, ForceMode2D.Impulse);
+            _lockCurrentJumpForce = false;
         }
+    }
+
+    private void CalculateJump()
+    {
+        if (!_lockCurrentJumpForce)
+        {
+            currentJumpForce = Vector2.zero;
+        }
+        
+        if (_jumpInput && _allowJump)
+        {
+            InflateWheel();
+        }
+
+        _jumpInputHasBeenChecked = true;
     }
 
     private float CalculateNewMoveSpeed()
@@ -334,32 +345,49 @@ public class PlayerMovement : MonoBehaviour
         return newMoveSpeed;
     }
 
-    private Sequence SetupJumpSequence()
+    private Sequence SetupInflateSequence()
     {
         Sequence mySequence = DOTween.Sequence();
         
         //Setup movement
-        mySequence.Append(wheel.DOLocalMove(new Vector3(0, wheelMaxShift, 0), jumpSequenceDuration / 3).SetEase(Ease.Linear)
+        mySequence.Append(wheelGfx.DOLocalMove(new Vector3(0, wheelMaxShift, 0), jumpSequenceDuration / 3).SetEase(Ease.Linear));
+        mySequence.Append(wheelGfx.DOLocalMove(new Vector3(0, -wheelMaxShift, 0), jumpSequenceDuration / 3).SetEase(Ease.Linear)
             .OnComplete(() => _allowJump = true));
-        mySequence.Append(wheel.DOLocalMove(new Vector3(0, -wheelMaxShift, 0), jumpSequenceDuration / 3).SetEase(Ease.Linear));
-        mySequence.Append(wheel.DOLocalMove(new Vector3(0, 0, 0), jumpSequenceDuration / 3).SetEase(Ease.Linear));
+        mySequence.Append(wheelGfx.DOLocalMove(new Vector3(0, 0, 0), jumpSequenceDuration / 3).SetEase(Ease.Linear));
         
         //Setup scale
         mySequence.Insert(jumpSequenceDuration / 3,
-            shellGfx.DOScale(new Vector3(wheelMaxInflate, wheelMaxInflate, 1), jumpSequenceDuration / 3).SetEase(Ease.Linear));
+            shellGfx.DOScale(new Vector3(wheelMaxInflate, wheelMaxInflate, 1), jumpSequenceDuration / 3).SetEase(Ease.Linear)
+                .OnComplete(Jump));
         mySequence.Insert(jumpSequenceDuration * 2 / 3,
             shellGfx.DOScale(new Vector3(1, 1, 1), jumpSequenceDuration / 3).SetEase(Ease.Linear));
 
-        mySequence.OnComplete(() => _allowJump = false);
-
         return mySequence;
     }
-    
+
     private void Jump()
     {
-        Sequence jumpSequence = SetupJumpSequence();
+        List<RaycastHit2D> hits = LaunchRaycasts(transform.position, _jumpCheckDistance, 90, 270);
+
+        if (hits.Count > 0)
+        {
+            Vector2 hitsMeanPoint = CalculateMeanHitPoint(hits);
+
+            Vector2 jumpDirection = ((Vector2) transform.position - hitsMeanPoint).normalized;
+
+            currentJumpForce = jumpDirection * jumpForce;
+
+            _lockCurrentJumpForce = true;
+        }
+    }
+    
+    private void InflateWheel()
+    {
+        _allowJump = false;
         
-        jumpSequence.Play();
+        Sequence inflateSequence = SetupInflateSequence();
+        
+        inflateSequence.Play();
     }
 
     private void CheckGrounded()
@@ -388,25 +416,8 @@ public class PlayerMovement : MonoBehaviour
             }
         }
     }
-    
-    private void OnCollisionEnter2D(Collision2D col)
-    {
-        if (_allowJump && col.gameObject.layer == LayerMask.NameToLayer("Ground"))
-        {
-            List<RaycastHit2D> hits = LaunchRaycasts(wheel.transform.position, _jumpCheckDistance);
 
-            if (hits.Count > 0)
-            {
-                Vector2 hitsMeanPoint = CalculateMeanHitPoint(hits);
-                
-                _rb.AddForce(((Vector2)wheel.transform.position - hitsMeanPoint).normalized * jumpForce, ForceMode2D.Impulse);
-
-                _allowJump = false;
-            }
-        }
-    }
-
-    private void AdaptGravity()
+    private void HandleGravity()
     {
         if (_isGrounded)
         {
@@ -420,9 +431,10 @@ public class PlayerMovement : MonoBehaviour
 
     //UTILITARY FUNCTIONS
     
-    private List<RaycastHit2D> LaunchRaycasts(Vector2 startPos, float distance)
+    private List<RaycastHit2D> LaunchRaycasts(Vector2 startPos, float distance, float from = 180, float to = 540)
     {
-        Vector2 currentCheckDirection = Vector2.down;
+        Vector2 currentCheckDirection = Vector2.up;
+        currentCheckDirection = Quaternion.AngleAxis(from, Vector3.forward) * currentCheckDirection;
 
         List<RaycastHit2D> hits = new List<RaycastHit2D>();
         for (int i = 0; i < raycastCount; i++)
@@ -436,7 +448,7 @@ public class PlayerMovement : MonoBehaviour
             }
 
             //Rotate the currentDirection
-            currentCheckDirection = Quaternion.AngleAxis(360f / raycastCount, Vector3.forward) * currentCheckDirection;
+            currentCheckDirection = Quaternion.AngleAxis((to - from) / raycastCount, Vector3.forward) * currentCheckDirection;
         }
 
         return hits;

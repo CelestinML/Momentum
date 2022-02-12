@@ -5,26 +5,38 @@ using UnityEngine;
 
 public class Platform : MonoBehaviour
 {
-    private Transform _playerBottom;
+    [SerializeField] private float topOffset = .05f;
+    
+    [SerializeField] private float bottomOffset = .5f;
+    
+    private Transform _playerWheel;
+
+    private float _wheelRadius;
+
+    private float _thresholdHeight;
 
     private Collider2D _collider;
 
     private void Start()
     {
-        _playerBottom = GameObject.FindWithTag("PlayerBottom").transform;
+        _playerWheel = GameObject.FindWithTag("Player").transform.Find("Body/Wheel");
+        _wheelRadius = Vector2.Distance(_playerWheel.position, _playerWheel.Find("Player Bottom").position);
 
         _collider = GetComponent<Collider2D>();
+        _collider.enabled = false;
+
+        _thresholdHeight = transform.position.y + _wheelRadius;
     }
 
     private void Update()
     {
-        if (_playerBottom.position.y <= transform.position.y)
-        {
-            _collider.enabled = false;
-        }
-        else
+        if (_playerWheel.position.y >= _thresholdHeight + topOffset)
         {
             _collider.enabled = true;
+        }
+        else if (_playerWheel.position.y <= _thresholdHeight - bottomOffset)
+        {
+            _collider.enabled = false;
         }
     }
 }

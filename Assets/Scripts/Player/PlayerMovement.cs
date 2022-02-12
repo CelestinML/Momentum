@@ -19,10 +19,10 @@ public class PlayerMovement : MonoBehaviour
     public float jumpForce = 20;
 
     [Range(0, 3)]
-    public float bodyMaxInflate = 2;
+    public float wheelMaxInflate = 2;
 
     [Range(0, 1)]
-    public float bodyMaxShift = .3f;
+    public float wheelMaxShift = .3f;
     
     public float jumpSequenceDuration = .3f;
     
@@ -42,7 +42,7 @@ public class PlayerMovement : MonoBehaviour
     //Jump attributes
     private Sequence _jumpSequence = null;
     
-    //Calculated according to the body's size
+    //Calculated according to the wheel's size
     private float _jumpCheckDistance;
     
     
@@ -96,11 +96,13 @@ public class PlayerMovement : MonoBehaviour
 
     //Serialized
 
-    public float maxBodyRotationSpeed = 5;
+    public float maxWheelRotationSpeed = 540;
     
-    [SerializeField] private Transform body;
+    [SerializeField] private Transform wheel;
 
-    [SerializeField] private Transform shell;
+    [SerializeField] private Transform wheelGfx;
+
+    [SerializeField] private Transform shellGfx;
 
     [SerializeField] private float flipThreshold = 1;
     
@@ -138,7 +140,7 @@ public class PlayerMovement : MonoBehaviour
         _psEmission = ps.emission;
         _particlesRateOverTime = (int) _psEmission.rateOverTime.constant;
 
-        _jumpCheckDistance = shell.GetComponent<Renderer>().bounds.size.x / 2 * bodyMaxInflate + bodyMaxShift;
+        _jumpCheckDistance = shellGfx.GetComponent<Renderer>().bounds.size.x / 2 * wheelMaxInflate + wheelMaxShift;
 
         _jumpSequence = SetupJumpSequence();
     }
@@ -149,7 +151,7 @@ public class PlayerMovement : MonoBehaviour
 
         OrientatePlayer();
 
-        RotateBody();
+        RotateWheel();
 
         HandleParticles();
     }
@@ -213,11 +215,11 @@ public class PlayerMovement : MonoBehaviour
         transform.rotation = Quaternion.Euler(0, yRotation, zRotation);
     }
 
-    private void RotateBody()
+    private void RotateWheel()
     {
         float projectedSpeed = Vector2.Dot(_rb.velocity, _moveDirection);
         
-        body.rotation *= Quaternion.AngleAxis(-Mathf.Sign(projectedSpeed) * _horizontalInput * maxBodyRotationSpeed * Time.deltaTime, Vector3.forward);
+        wheelGfx.rotation *= Quaternion.AngleAxis(-Mathf.Sign(projectedSpeed) * _horizontalInput * maxWheelRotationSpeed * Time.deltaTime, Vector3.forward);
     }
 
     private void HandleParticles()
@@ -337,16 +339,16 @@ public class PlayerMovement : MonoBehaviour
         Sequence mySequence = DOTween.Sequence();
         
         //Setup movement
-        mySequence.Append(body.DOLocalMove(new Vector3(0, bodyMaxShift, 0), jumpSequenceDuration / 3).SetEase(Ease.Linear)
+        mySequence.Append(wheel.DOLocalMove(new Vector3(0, wheelMaxShift, 0), jumpSequenceDuration / 3).SetEase(Ease.Linear)
             .OnComplete(() => _allowJump = true));
-        mySequence.Append(body.DOLocalMove(new Vector3(0, -bodyMaxShift, 0), jumpSequenceDuration / 3).SetEase(Ease.Linear));
-        mySequence.Append(body.DOLocalMove(new Vector3(0, 0, 0), jumpSequenceDuration / 3).SetEase(Ease.Linear));
+        mySequence.Append(wheel.DOLocalMove(new Vector3(0, -wheelMaxShift, 0), jumpSequenceDuration / 3).SetEase(Ease.Linear));
+        mySequence.Append(wheel.DOLocalMove(new Vector3(0, 0, 0), jumpSequenceDuration / 3).SetEase(Ease.Linear));
         
         //Setup scale
         mySequence.Insert(jumpSequenceDuration / 3,
-            shell.DOScale(new Vector3(bodyMaxInflate, bodyMaxInflate, 1), jumpSequenceDuration / 3).SetEase(Ease.Linear));
+            shellGfx.DOScale(new Vector3(wheelMaxInflate, wheelMaxInflate, 1), jumpSequenceDuration / 3).SetEase(Ease.Linear));
         mySequence.Insert(jumpSequenceDuration * 2 / 3,
-            shell.DOScale(new Vector3(1, 1, 1), jumpSequenceDuration / 3).SetEase(Ease.Linear));
+            shellGfx.DOScale(new Vector3(1, 1, 1), jumpSequenceDuration / 3).SetEase(Ease.Linear));
 
         mySequence.OnComplete(() => _allowJump = false);
 
@@ -371,15 +373,18 @@ public class PlayerMovement : MonoBehaviour
 
         if (hits.Count > 0)
         {
-            RaycastHit2D? closestHit = FindClosestHit(hits, playerPos);
+            RaycastHit2D? minAngleHit = FindMinAngleHit(hits);
 
-            float minAngle = FindMinAngle(hits);
-            
-            if (Mathf.Abs(minAngle) < maxWalkableAngle && closestHit.HasValue)
+            if (minAngleHit.HasValue)
             {
-                _isGrounded = true;
-                _currentAngle = minAngle;
-                _moveDirection = Vector3.Cross(closestHit.Value.normal, Vector3.forward).normalized;
+                float angle = -Vector3.SignedAngle(Vector2.up, minAngleHit.Value.normal, Vector3.forward);
+
+                if (Mathf.Abs(angle) < maxWalkableAngle)
+                {
+                    _isGrounded = true;
+                    _currentAngle = angle;
+                    _moveDirection = Vector3.Cross(minAngleHit.Value.normal, Vector3.forward).normalized;
+                }
             }
         }
     }
@@ -388,13 +393,13 @@ public class PlayerMovement : MonoBehaviour
     {
         if (_allowJump && col.gameObject.layer == LayerMask.NameToLayer("Ground"))
         {
-            List<RaycastHit2D> hits = LaunchRaycasts(body.transform.position, _jumpCheckDistance);
+            List<RaycastHit2D> hits = LaunchRaycasts(wheel.transform.position, _jumpCheckDistance);
 
             if (hits.Count > 0)
             {
                 Vector2 hitsMeanPoint = CalculateMeanHitPoint(hits);
                 
-                _rb.AddForce(((Vector2)body.transform.position - hitsMeanPoint).normalized * jumpForce, ForceMode2D.Impulse);
+                _rb.AddForce(((Vector2)wheel.transform.position - hitsMeanPoint).normalized * jumpForce, ForceMode2D.Impulse);
 
                 _allowJump = false;
             }
@@ -472,8 +477,10 @@ public class PlayerMovement : MonoBehaviour
         return closestHit;
     }
 
-    private float FindMinAngle(List<RaycastHit2D> hits)
+    private RaycastHit2D? FindMinAngleHit(List<RaycastHit2D> hits)
     {
+        RaycastHit2D? minAngleHit = null;
+        
         float minAngleNorm = float.MaxValue;
         float minAngle = float.MaxValue;
 
@@ -482,11 +489,12 @@ public class PlayerMovement : MonoBehaviour
             float currentAngle = Vector3.SignedAngle(Vector2.up, hit.normal, Vector3.forward);
             if (Mathf.Abs(currentAngle) < minAngleNorm)
             {
+                minAngleHit = hit;
                 minAngleNorm = Mathf.Abs(currentAngle);
                 minAngle = currentAngle;
             }
         }
 
-        return -minAngle;
+        return minAngleHit;
     }
 }

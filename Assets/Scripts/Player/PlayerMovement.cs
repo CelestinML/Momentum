@@ -115,16 +115,20 @@ public class PlayerMovement : MonoBehaviour
 
     [Header("Particle System")] 
     
-    [SerializeField] private ParticleSystem ps;
+    [SerializeField] private ParticleSystem walkPs;
 
-    //Defines where the particles will be emitted from
+    //Defines where the walk particles will be emitted from
     [SerializeField] private Transform playerBottom;
 
     //Stores the particle system's emission system to be able to modify the emission rate
-    private ParticleSystem.EmissionModule _psEmission;
+    private ParticleSystem.EmissionModule _walkPsEmission;
 
     //Stores the original particle rate over time
     private float _particlesRateOverTime;
+    
+    [SerializeField] private ParticleSystem jumpPs;
+
+    private ParticleSystem.ShapeModule _jumpPsShape;
     
 
     private void Start()
@@ -135,8 +139,11 @@ public class PlayerMovement : MonoBehaviour
 
         _checkDistance = Vector2.Distance(transform.position, groundCheck.position);
 
-        _psEmission = ps.emission;
-        _particlesRateOverTime = (int) _psEmission.rateOverTime.constant;
+        _walkPsEmission = walkPs.emission;
+        _particlesRateOverTime = (int) _walkPsEmission.rateOverTime.constant;
+
+        _jumpPsShape = jumpPs.shape;
+        jumpPs.Stop();
 
         _jumpCheckDistance = shellGfx.GetComponent<Renderer>().bounds.size.x / 2 * wheelMaxInflate + wheelMaxShift;
     }
@@ -220,15 +227,15 @@ public class PlayerMovement : MonoBehaviour
 
     private void HandleParticles()
     {
-        ps.transform.position = playerBottom.position;
+        walkPs.transform.position = playerBottom.position;
 
         if (Mathf.Approximately(_horizontalInput, 0) || !_isGrounded)
         {
-            _psEmission.rateOverTime = 0;
+            _walkPsEmission.rateOverTime = 0;
         }
         else
         {
-            _psEmission.rateOverTime = _particlesRateOverTime;
+            _walkPsEmission.rateOverTime = _particlesRateOverTime;
 
             float particlesYRotation;
             float particlesZRotation;
@@ -244,7 +251,7 @@ public class PlayerMovement : MonoBehaviour
                 particlesZRotation = -Mathf.Abs(_currentAngle) * Mathf.Sign(_currentAngle);
             }
 
-            ps.transform.rotation = Quaternion.Euler(0, particlesYRotation, particlesZRotation);
+            walkPs.transform.rotation = Quaternion.Euler(0, particlesYRotation, particlesZRotation);
         }
     }
     
@@ -378,6 +385,11 @@ public class PlayerMovement : MonoBehaviour
             currentJumpForce = jumpDirection * jumpForce;
 
             _lockCurrentJumpForce = true;
+            
+            //Handle jump GFX
+            _jumpPsShape.rotation = new Vector3(0, -Vector3.SignedAngle(Vector2.up, jumpDirection, Vector3.forward), 0);
+            jumpPs.transform.position = hitsMeanPoint;
+            jumpPs.Play();
         }
     }
     

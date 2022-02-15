@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using DG.Tweening;
 using UnityEngine;
@@ -378,9 +379,11 @@ public class PlayerMovement : MonoBehaviour
 
         if (hits.Count > 0)
         {
-            Vector2 hitsMeanPoint = CalculateMeanHitPoint(hits);
+            //Vector2 hitsMeanPoint = CalculateMeanHitPoint(hits);
 
-            Vector2 jumpDirection = ((Vector2) transform.position - hitsMeanPoint).normalized;
+            //Vector2 jumpDirection = ((Vector2) transform.position - hitsMeanPoint).normalized;
+
+            Vector2 jumpDirection = CalculateMeanNormal(hits);
 
             currentJumpForce = jumpDirection * jumpForce;
 
@@ -388,7 +391,8 @@ public class PlayerMovement : MonoBehaviour
             
             //Handle jump GFX
             _jumpPsShape.rotation = new Vector3(0, -Vector3.SignedAngle(Vector2.up, jumpDirection, Vector3.forward), 0);
-            jumpPs.transform.position = hitsMeanPoint;
+            //jumpPs.transform.position = hitsMeanPoint;
+            jumpPs.transform.position = (Vector2)wheelGfx.position - jumpDirection * _checkDistance;
             jumpPs.Play();
         }
     }
@@ -407,9 +411,10 @@ public class PlayerMovement : MonoBehaviour
         Vector2 playerPos = transform.position;
 
         List<RaycastHit2D> hits = LaunchRaycasts(playerPos, _checkDistance);
-
+        
         _isGrounded = false;
         _currentAngle = 0;
+        _moveDirection = Vector2.right;
 
         if (hits.Count > 0)
         {
@@ -478,6 +483,28 @@ public class PlayerMovement : MonoBehaviour
         hitsMeanPoint /= hits.Count;
 
         return hitsMeanPoint;
+    }
+
+    private Vector2 CalculateMeanNormal(List<RaycastHit2D> hits)
+    {
+        HashSet<Vector2> normals = new HashSet<Vector2>();
+        Vector2 meanNormal = Vector2.zero;
+
+        foreach (RaycastHit2D hit in hits)
+        {
+            if (normals.Add(hit.normal))
+            {
+                meanNormal += hit.normal;
+            }
+        }
+
+        int normalsCount = normals.Count;
+        if (normalsCount > 0)
+        {
+            meanNormal /= normalsCount;
+        }
+
+        return meanNormal;
     }
 
     private RaycastHit2D? FindClosestHit(List<RaycastHit2D> hits, Vector2 referencePoint)
